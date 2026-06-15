@@ -7,3 +7,7 @@ env
 .lock
 docs/dev-environment.md
 collections/
+
+# ansible-navigator artifacts
+ansible-navigator.log
+playbook-artifacts/

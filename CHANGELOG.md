@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- `ansible-navigator.yml` — navigator configuration for Red Hat EE ee-supported-rhel9 with volume mounts for ~/.ansible/ and environment variable passthrough (closes #167)
+- `scripts/bootstrap.sh` — bootstrap wrapper script with inventory validation, env var checks, and automatic Automation Hub token extraction
+- `.gitignore` — exclude ansible-navigator.log and playbook-artifacts/ from version control
+
+### Changed
+- `ansible.cfg` — removed collections_path (collections pre-installed in EE image), moved Automation Hub token to env var lookup, removed hardcoded token value (closes #167)
+- `CLAUDE.md` — updated Prerequisites section to use ansible-navigator + podman pull instead of ansible-galaxy collection install; updated bootstrap commands to use ansible-navigator run; added ansible-navigator.yml and scripts/bootstrap.sh to Key Files table; added navigator convention (closes #167)
+- Workflow migrated from ansible-galaxy + ansible-playbook to ansible-navigator with Red Hat supported Execution Environment (closes #167)
+
+### Previous Unreleased
+
+### Added
 - `inventories/rhdp-acme-cac/` — inventory for acme CaC demo environment
 
 ### Changed

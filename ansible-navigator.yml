@@ -1,0 +1,43 @@
+---
+ansible-navigator:
+  ansible:
+    config:
+      path: ./ansible.cfg
+
+  execution-environment:
+    container-engine: podman
+    enabled: true
+    image: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9:latest
+    pull:
+      policy: missing
+
+    # Volume mounts for local development
+    volume-mounts:
+      - src: ~/.ansible/
+        dest: /home/runner/.ansible/
+        options: Z
+      - src: ./
+        dest: /runner/project/
+        options: Z
+
+    # Environment variables passed from host
+    environment-variables:
+      pass:
+        - CONTROLLER_HOST
+        - CONTROLLER_USERNAME
+        - CONTROLLER_PASSWORD
+        - ANSIBLE_GALAXY_TOKEN
+
+  logging:
+    level: warning
+    append: true
+    file: ./ansible-navigator.log
+
+  playbook-artifact:
+    enable: true
+    save-as: ./playbook-artifacts/{playbook_name}-{time_stamp}.json
+
+  mode: stdout
+
+  # Set timezone inside container
+  time-zone: America/Phoenix
