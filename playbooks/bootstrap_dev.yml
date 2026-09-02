@@ -96,6 +96,89 @@
             wait: true
             state: present
 
+        # ------------------------------------------------------------------
+        # Give "AAP Credential" an OAuth token.
+        #
+        # The "Red Hat Ansible Automation Platform" credential type injects
+        # aap_token as an EXTRA VAR (aap_token: "{{oauth_token}}"). With
+        # oauth_token empty, aap_token arrives as "", every infra.aap_configuration
+        # role resolves `controller_oauthtoken: "{{ aap_token | default(omit, true) }}"`
+        # to omit, and ansible.controller modules fall back to username/password
+        # auth -- which POSTs to /api/controller/v2/tokens/. AAP 2.6+ removed that
+        # endpoint, so playbooks/main.yml dies with
+        # "Failed to get token: HTTP Error 404: Not Found".
+        #
+        # Extra vars are the highest-precedence source in Ansible, so this CANNOT
+        # be fixed from inside main.yml -- the token has to be on the credential.
+        # ------------------------------------------------------------------
+
+        - name: Find any previous CaC tokens
+          ansible.builtin.uri:
+            url: "{{ aap_hostname }}/api/gateway/v1/tokens/?description=AAP%20CaC%20token"
+            headers:
+              Authorization: "Bearer {{ bootstrap_token.ansible_facts.aap_token.token }}"
+            validate_certs: "{{ aap_validate_certs }}"
+          register: previous_cac_tokens
+
+        # Superseded tokens would otherwise accumulate one per bootstrap run.
+        - name: Delete previous CaC tokens
+          ansible.builtin.uri:
+            url: "{{ aap_hostname }}/api/gateway/v1/tokens/{{ item.id }}/"
+            method: DELETE
+            headers:
+              Authorization: "Bearer {{ bootstrap_token.ansible_facts.aap_token.token }}"
+            status_code: [204, 404]
+            validate_certs: "{{ aap_validate_certs }}"
+          loop: "{{ previous_cac_tokens.json.results | default([]) }}"
+          loop_control:
+            label: "token {{ item.id }}"
+
+        # Deliberately NOT deleted in the always: block below -- this token lives
+        # inside AAP Credential and must outlive the bootstrap run. See CLAUDE.md.
+        - name: Create the durable CaC token
+          ansible.platform.token:
+            aap_hostname: "{{ aap_hostname }}"
+            aap_username: "{{ aap_username }}"
+            aap_password: "{{ aap_password }}"
+            aap_validate_certs: "{{ aap_validate_certs }}"
+            description: "AAP CaC token"
+            scope: write
+            state: present
+          register: cac_token
+
+        # RHDP provisions "AAP Credential" into its own organization, so look the
+        # organization up rather than assuming Default and creating a duplicate.
+        - name: Look up the existing AAP Credential
+          ansible.builtin.uri:
+            url: "{{ aap_hostname }}/api/controller/v2/credentials/?name=AAP%20Credential"
+            headers:
+              Authorization: "Bearer {{ bootstrap_token.ansible_facts.aap_token.token }}"
+            validate_certs: "{{ aap_validate_certs }}"
+          register: aap_credential_lookup
+
+        - name: Give AAP Credential the CaC token
+          ansible.controller.credential:
+            controller_host: "{{ aap_hostname }}"
+            controller_oauthtoken: "{{ bootstrap_token.ansible_facts.aap_token.token }}"
+            validate_certs: "{{ aap_validate_certs }}"
+            name: "AAP Credential"
+            credential_type: "Red Hat Ansible Automation Platform"
+            organization: >-
+              {{ (aap_credential_lookup.json.results | first).summary_fields.organization.name
+                 if aap_credential_lookup.json.count | int > 0 else 'Default' }}
+            # inputs is replaced wholesale on update -- every field must be given,
+            # or the omitted ones are injected as empty strings. Dropping
+            # request_timeout makes main.yml fail with
+            # "gateway_request_timeout ... cannot be converted to a float".
+            inputs:
+              host: "{{ aap_hostname }}"
+              username: "{{ aap_username }}"
+              password: "{{ aap_password }}"
+              oauth_token: "{{ cac_token.ansible_facts.aap_token.token }}"
+              request_timeout: "10"
+              verify_ssl: "{{ aap_validate_certs }}"
+            state: present
+
         - name: Create Setup - AAP - CAC job template
           ansible.controller.job_template:
             controller_host: "{{ aap_hostname }}"
