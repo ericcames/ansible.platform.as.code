@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+- `playbooks/bootstrap_dev.yml` — populate `oauth_token` on the `AAP Credential` so the `aap_token` extra var it injects is a real token. AAP 2.6+ removed the controller OAuth token endpoints, so without it every `ansible.controller` role falls back to username/password auth and `Setup - AAP - CAC` fails at the first controller task with `Failed to get token: HTTP Error 404: Not Found`. Creates a durable `AAP CaC token` that is intentionally not deleted at the end of the run, and removes superseded ones first. Looks up the credential's existing organization rather than assuming `Default`, and writes all six `inputs` fields because `inputs` is replaced wholesale on update (closes #169)
+
 ### Added
 - `inventories/rhdp-acme-cac/` — inventory for acme CaC demo environment
 

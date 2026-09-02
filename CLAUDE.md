@@ -58,6 +58,26 @@ The playbook creates:
 The bootstrap token is automatically deleted when the playbook completes
 (even on failure) to prevent stale token accumulation.
 
+### The AAP CaC token — a deliberate exception
+
+Bootstrap also creates a second, **durable** token called `AAP CaC token` and writes it
+into the `oauth_token` field of `AAP Credential`. This one is intentionally *not* deleted.
+
+It has to persist because the `Red Hat Ansible Automation Platform` credential type
+injects `aap_token: "{{oauth_token}}"` as an **extra var**. If `oauth_token` is empty,
+`aap_token` arrives as `""`, every `infra.aap_configuration` role resolves
+`controller_oauthtoken: "{{ aap_token | default(omit, true) }}"` to `omit`, and the
+`ansible.controller` modules fall back to username/password auth — which POSTs to
+`/api/controller/v2/tokens/`. **AAP 2.6+ removed that endpoint**, so `Setup - AAP - CAC`
+fails at its first controller task with `Failed to get token: HTTP Error 404: Not Found`.
+
+Extra vars are the highest-precedence source in Ansible, so this cannot be fixed from
+inside `playbooks/main.yml` — not with `set_fact`, play vars, or `include_role` vars.
+The token must be on the credential.
+
+Bootstrap deletes any previous `AAP CaC token` before creating the new one, so exactly
+one exists per environment. Deleting it by hand will break CaC on that instance.
+
 ### After Bootstrap — Run Setup
 
 Once bootstrap completes, launch `Setup - AAP - CAC` from AAP to load all
@@ -104,4 +124,5 @@ claude plugins update aap-skills@aap-skills
 - One fix per branch and PR
 - Use `ansible.platform` modules where available; fall back to `ansible.controller`
   only when no platform equivalent exists
-- Any playbook that creates a token must delete it in an `always:` block
+- Any playbook that creates a token must delete it in an `always:` block — the sole
+  exception is the durable `AAP CaC token`, which must outlive the run (see above)
