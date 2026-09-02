@@ -48,6 +48,11 @@
     - name: Do stuff
       vars:
         meta_dependency_check: false  # noqa: var-naming[no-role-prefix]
+        # AAP 2.7 removed the controller OAuth token endpoints, so ansible.controller
+        # modules can no longer mint their own token from username/password. Hand them
+        # the gateway token created above; without this they 404 on
+        # /api/controller/v2/tokens/. Accepts the fact dict as-is.
+        aap_token: "{{ ansible_facts['aap_token'] }}"
       ansible.builtin.include_role:
         name: infra.aap_configuration.dispatch
 

@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+- `playbooks/main.yml` — pass the gateway token to `infra.aap_configuration.dispatch` as `aap_token` so `ansible.controller` modules stop trying to mint their own OAuth token. AAP 2.7 removed the controller token endpoints, so `Setup - AAP - CAC` failed at the first controller task with `Failed to get token: HTTP Error 404: Not Found` (closes #169)
+
 ### Added
 - `inventories/rhdp-acme-cac/` — inventory for acme CaC demo environment
 
