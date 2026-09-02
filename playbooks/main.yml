@@ -35,6 +35,25 @@
         scope: write
         state: present
 
+    # AAP 2.7 removed the controller OAuth token endpoints, so ansible.controller
+    # modules can no longer mint their own token from username/password -- they 404
+    # on /api/controller/v2/tokens/. Every infra.aap_configuration role wires the
+    # token through as `controller_oauthtoken: "{{ aap_token | default(omit, true) }}"`,
+    # so aap_token must be in scope inside the roles that dispatch includes. A `vars:`
+    # entry on the dispatch include_role does not reach those nested roles, so set it
+    # as a host fact. The modules accept the fact dict as-is.
+    - name: Make the gateway token available to every dispatched role
+      ansible.builtin.set_fact:
+        aap_token: "{{ ansible_facts['aap_token'] }}"
+
+    - name: Assert the token is in scope before dispatching
+      ansible.builtin.assert:
+        that:
+          - aap_token is defined
+          - aap_token.token is defined
+        fail_msg: "aap_token fact missing - controller modules will fall back to the removed token endpoint"
+        success_msg: "aap_token in scope"
+
     - name: Grab vault from remote url
       ansible.builtin.get_url:
         url: '{{ my_remote_vault }}'
@@ -48,11 +67,6 @@
     - name: Do stuff
       vars:
         meta_dependency_check: false  # noqa: var-naming[no-role-prefix]
-        # AAP 2.7 removed the controller OAuth token endpoints, so ansible.controller
-        # modules can no longer mint their own token from username/password. Hand them
-        # the gateway token created above; without this they 404 on
-        # /api/controller/v2/tokens/. Accepts the fact dict as-is.
-        aap_token: "{{ ansible_facts['aap_token'] }}"
       ansible.builtin.include_role:
         name: infra.aap_configuration.dispatch
 
