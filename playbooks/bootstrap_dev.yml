@@ -112,6 +112,10 @@
         # be fixed from inside main.yml -- the token has to be on the credential.
         # ------------------------------------------------------------------
 
+        # Order matters: find the old tokens, but create the new one and attach it
+        # BEFORE deleting them. Deleting first would leave AAP Credential holding a
+        # revoked token if any later task failed, which silently breaks CaC on an
+        # instance that was previously working.
         - name: Find any previous CaC tokens
           ansible.builtin.uri:
             url: "{{ aap_hostname }}/api/gateway/v1/tokens/?description=AAP%20CaC%20token"
@@ -119,19 +123,6 @@
               Authorization: "Bearer {{ bootstrap_token.ansible_facts.aap_token.token }}"
             validate_certs: "{{ aap_validate_certs }}"
           register: previous_cac_tokens
-
-        # Superseded tokens would otherwise accumulate one per bootstrap run.
-        - name: Delete previous CaC tokens
-          ansible.builtin.uri:
-            url: "{{ aap_hostname }}/api/gateway/v1/tokens/{{ item.id }}/"
-            method: DELETE
-            headers:
-              Authorization: "Bearer {{ bootstrap_token.ansible_facts.aap_token.token }}"
-            status_code: [204, 404]
-            validate_certs: "{{ aap_validate_certs }}"
-          loop: "{{ previous_cac_tokens.json.results | default([]) }}"
-          loop_control:
-            label: "token {{ item.id }}"
 
         # Deliberately NOT deleted in the always: block below -- this token lives
         # inside AAP Credential and must outlive the bootstrap run. See CLAUDE.md.
@@ -163,9 +154,11 @@
             validate_certs: "{{ aap_validate_certs }}"
             name: "AAP Credential"
             credential_type: "Red Hat Ansible Automation Platform"
+            # A credential can legitimately have no organization, so fall back to
+            # Default rather than dereferencing a null summary_fields.organization.
             organization: >-
-              {{ (aap_credential_lookup.json.results | first).summary_fields.organization.name
-                 if aap_credential_lookup.json.count | int > 0 else 'Default' }}
+              {{ ((aap_credential_lookup.json.results | first).summary_fields.organization.name
+                  if aap_credential_lookup.json.count | int > 0 else none) | default('Default', true) }}
             # inputs is replaced wholesale on update -- every field must be given,
             # or the omitted ones are injected as empty strings. Dropping
             # request_timeout makes main.yml fail with
@@ -178,6 +171,20 @@
               request_timeout: "10"
               verify_ssl: "{{ aap_validate_certs }}"
             state: present
+
+        # Only now that the new token is attached. Superseded tokens would
+        # otherwise accumulate one per bootstrap run.
+        - name: Delete previous CaC tokens
+          ansible.builtin.uri:
+            url: "{{ aap_hostname }}/api/gateway/v1/tokens/{{ item.id }}/"
+            method: DELETE
+            headers:
+              Authorization: "Bearer {{ bootstrap_token.ansible_facts.aap_token.token }}"
+            status_code: [204, 404]
+            validate_certs: "{{ aap_validate_certs }}"
+          loop: "{{ previous_cac_tokens.json.results | default([]) }}"
+          loop_control:
+            label: "token {{ item.id }}"
 
         - name: Create Setup - AAP - CAC job template
           ansible.controller.job_template:
